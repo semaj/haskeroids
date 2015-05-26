@@ -36,7 +36,8 @@ data Bullet = Bullet {
 
 data State = State {
   player :: Player,
-  asteroids :: [Asteroid]
+  asteroids :: [Asteroid],
+  bullets :: [Bullet]
 }
 
 -- wow. unit circle comes in handy
@@ -50,16 +51,19 @@ moveP (Player x y vx vy r) = Player nx ny vx vy r
           where nx = round $ friction * (fromIntegral (x + vx)) -- friction
                 ny = round $ friction * (fromIntegral (y + vy))
 
+stepPlayer :: (Int, Int) ->  Player -> Player
+stepPlayer (dx, dy) (Player x y vx vy r) = moveP $ thrust dy $ Player x y vx vy newRotation
+            where newRotation = r + ((realToFrac dx) / 10.0)
 
-step :: (Int, Int) -> State -> State
--- step (dx, dy) (State (Obj x y vx vy) asteroids) | trace (show dx) False = undefined
-step (dx, dy) (State (Player x y vx vy r) asteroids) = 
-    State player asteroids
-    where newRotation = r + ((realToFrac dx) / 10.0)
-          player = moveP $ thrust dy $ Player x y vx vy newRotation
+collisions :: State -> State
+collisions s = s
+
+step :: ((Int, Int), Bool) -> State -> State
+step ((dx, dy), space) (State player asteroids bullets) = 
+    collisions $ State (stepPlayer (dx, dy) player) asteroids bullets
 
 render :: State -> Element
-render (State (Player x y vx vy r) asteroids) =
+render (State (Player x y vx vy r) asteroids bullets) =
   collage worldWidth worldHeight [move ((wrapX x), (wrapY y)) $ rotate r ship]
 
 wrapX :: Int -> Double
@@ -68,13 +72,17 @@ wrapX x = realToFrac $ mod x worldWidth
 wrapY :: Int -> Double
 wrapY y = realToFrac $ mod y worldHeight
 
-sig :: Signal (Int, Int)
-sig = lift2 (\ x y -> x) Keyboard.arrows (Time.every Time.millisecond)
+sig :: Signal ((Int, Int), Bool)
+sig = lift3 (\ x y z -> (x, z))
+            Keyboard.arrows 
+            (Time.every Time.millisecond) 
+            (Keyboard.isDown Keyboard.SpaceKey)
 
 main :: IO ()
 main = run defaultConfig $ render <~ stepper
   where
     defaultPlayer = Player 100 100 0 0 0.0
     defaultAsteroid = [Asteroid 20 20 5 5]
-    state = State defaultPlayer defaultAsteroid
+    defaultBullets = []
+    state = State defaultPlayer defaultAsteroid defaultBullets
     stepper = foldp step state sig
