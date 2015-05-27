@@ -7,18 +7,21 @@ import Debug.Trace
 ship :: Form
 ship = filled white $ ngon 3 20.0
 
+bullet :: Form
+bullet = filled white $ rect 10.0 2.0
+
 friction = 0.95
 acceleration = 1.0
-worldWidth = 800
+worldWidth = 600
 worldHeight = 600
 startBLife = 10
 
 data Player = Player {
   x :: Int,
-    y :: Int,
-    vx :: Int,
-    vy :: Int,
-    rotation :: Double
+  y :: Int,
+  vx :: Int,
+  vy :: Int,
+  rotation :: Double
 }
 
 data Asteroid = Asteroid {
@@ -31,8 +34,9 @@ data Asteroid = Asteroid {
 data Bullet = Bullet {
   bx :: Int,
   by :: Int,
-  life :: Int
-}
+  life :: Int,
+  rot :: Double
+} deriving Show
 
 data State = State {
   player :: Player,
@@ -55,16 +59,40 @@ stepPlayer :: (Int, Int) ->  Player -> Player
 stepPlayer (dx, dy) (Player x y vx vy r) = moveP $ thrust dy $ Player x y vx vy newRotation
             where newRotation = r + ((realToFrac dx) / 10.0)
 
+isAlive :: Bullet -> Bool
+isAlive (Bullet _ _ life _) = life /= 50
+
+newBullet :: Player -> Bullet
+newBullet (Player x y _ _ r) = Bullet x y 0 r
+
+moveBullet :: Bullet -> Bullet
+moveBullet (Bullet x y life rot) = Bullet (x + nx) (y + ny) (life + 1) rot
+        where nx = round $ 10.0 * cos rot
+              ny = round $ 10.0 * sin rot
+
+stepBullets :: Bool -> Player -> [Bullet] -> [Bullet]
+stepBullets space player bullets = map moveBullet $ filter isAlive (newB ++ bullets)
+          where newB = if space then [newBullet player] else []
+
 collisions :: State -> State
 collisions s = s
 
 step :: ((Int, Int), Bool) -> State -> State
 step ((dx, dy), space) (State player asteroids bullets) = 
-    collisions $ State (stepPlayer (dx, dy) player) asteroids bullets
+    collisions $ State (stepPlayer (dx, dy) player)
+                        asteroids 
+                        (stepBullets space player bullets)
+
+drawBullet :: Bullet -> Form
+drawBullet (Bullet x y life r) =
+  move ((wrapX x), (wrapY y)) $ rotate r bullet
 
 render :: State -> Element
+render (State p a b) | trace (show b) False = undefined
 render (State (Player x y vx vy r) asteroids bullets) =
-  collage worldWidth worldHeight [move ((wrapX x), (wrapY y)) $ rotate r ship]
+  collage worldWidth 
+          worldHeight 
+          ([move ((wrapX x), (wrapY y)) $ rotate r ship] ++ (map drawBullet bullets))
 
 wrapX :: Int -> Double
 wrapX x = realToFrac $ mod x worldWidth
