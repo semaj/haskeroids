@@ -2,13 +2,17 @@ import FRP.Helm
 import qualified FRP.Helm.Keyboard as Keyboard
 import qualified FRP.Helm.Window as Window
 import qualified FRP.Helm.Time as Time
+import qualified FRP.Helm.Random as Random
 import Debug.Trace
 
 ship :: Form
 ship = filled white $ ngon 3 20.0
 
 bullet :: Form
-bullet = filled white $ rect 10.0 2.0
+bullet = filled red $ rect 10.0 2.0
+
+asteroid :: Double -> Form
+asteroid radius = filled blue $ circle radius
 
 friction = 0.95
 acceleration = 1.0
@@ -26,10 +30,10 @@ data Player = Player {
 
 data Asteroid = Asteroid {
   ax :: Int,
-     ay :: Int,
-     avx :: Int,
-     avy :: Int
-}
+  ay :: Int,
+  avx :: Int,
+  avy :: Int
+} deriving Show
 
 data Bullet = Bullet {
   bx :: Int,
@@ -74,25 +78,40 @@ stepBullets :: Bool -> Player -> [Bullet] -> [Bullet]
 stepBullets space player bullets = map moveBullet $ filter isAlive (newB ++ bullets)
           where newB = if space then [newBullet player] else []
 
-collisions :: State -> State
-collisions s = s
 
-step :: ((Int, Int), Bool) -> State -> State
-step ((dx, dy), space) (State player asteroids bullets) = 
+blasts :: [Asteroid] -> [Bullet] -> [Asteroid] -- , [Bullet])
+blasts as bs | trace ((show as) ++ "\n" ++ (show bs)) False = undefined
+blasts as bs = dropWhile huh as
+  where huh = (\ a -> (any (\ b -> (ax a) == (mod (bx b) worldWidth) && (ay a) == (mod (by b) worldHeight) )) bs)
+
+collisions :: State -> State
+collisions (State player asteroids bullets) = 
+  State player
+        (blasts asteroids bullets)
+        bullets
+
+stepAsteroids :: (Int, Int) -> [Asteroid] -> [Asteroid]
+stepAsteroids (rx, ry) asteroids = (Asteroid rx ry 1 1):asteroids
+
+step :: ((Int, Int), Bool, (Int, Int)) -> State -> State
+step ((dx, dy), space, rs) (State player asteroids bullets) = 
     collisions $ State (stepPlayer (dx, dy) player)
-                        asteroids 
+                        asteroids -- (stepAsteroids rs asteroids)
                         (stepBullets space player bullets)
+
+drawAsteroid :: Asteroid -> Form
+drawAsteroid (Asteroid x y vx vy) = move ((wrapX x), (wrapY y)) (asteroid 30.0)
 
 drawBullet :: Bullet -> Form
 drawBullet (Bullet x y life r) =
   move ((wrapX x), (wrapY y)) $ rotate r bullet
 
 render :: State -> Element
-render (State p a b) | trace (show b) False = undefined
+-- render (State p a b) | trace (show b) False = undefined
 render (State (Player x y vx vy r) asteroids bullets) =
   collage worldWidth 
           worldHeight 
-          ([move ((wrapX x), (wrapY y)) $ rotate r ship] ++ (map drawBullet bullets))
+          ([move ((wrapX x), (wrapY y)) $ rotate r ship] ++ (map drawBullet bullets) ++ (map drawAsteroid asteroids))
 
 wrapX :: Int -> Double
 wrapX x = realToFrac $ mod x worldWidth
@@ -100,17 +119,19 @@ wrapX x = realToFrac $ mod x worldWidth
 wrapY :: Int -> Double
 wrapY y = realToFrac $ mod y worldHeight
 
-sig :: Signal ((Int, Int), Bool)
-sig = lift3 (\ x y z -> (x, z))
+sig :: Signal ((Int, Int), Bool, (Int, Int))
+sig = lift5 (\ x y z a b -> (x, y, (z, a)))
             Keyboard.arrows 
-            (Time.every Time.millisecond) 
             (Keyboard.isDown Keyboard.SpaceKey)
+            (Random.range 0 worldWidth (Time.every Time.second))
+            (Random.range 0 worldHeight (Time.every Time.second))
+            (Time.every Time.millisecond)
 
 main :: IO ()
 main = run defaultConfig $ render <~ stepper
   where
     defaultPlayer = Player 100 100 0 0 0.0
-    defaultAsteroid = [Asteroid 20 20 5 5]
+    defaultAsteroid = [(Asteroid 100 100 1 1), (Asteroid 313 412 1 1)]
     defaultBullets = []
     state = State defaultPlayer defaultAsteroid defaultBullets
     stepper = foldp step state sig
