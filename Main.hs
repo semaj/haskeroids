@@ -9,7 +9,7 @@ ship :: Form
 ship = filled white $ ngon 3 20.0
 
 bullet :: Form
-bullet = filled red $ rect 10.0 2.0
+bullet = filled white $ rect 10.0 2.0
 
 asteroid :: Double -> Form
 asteroid radius = filled blue $ circle radius
@@ -80,9 +80,14 @@ stepBullets space player bullets = map moveBullet $ filter isAlive (newB ++ bull
 
 
 blasts :: [Asteroid] -> [Bullet] -> [Asteroid] -- , [Bullet])
-blasts as bs | trace ((show as) ++ "\n" ++ (show bs)) False = undefined
-blasts as bs = dropWhile huh as
-  where huh = (\ a -> (any (\ b -> (ax a) == (mod (bx b) worldWidth) && (ay a) == (mod (by b) worldHeight) )) bs)
+-- blasts as ((Bullet x y _ _):bs) = blasts asLeft bs
+blasts as [] = as
+blasts as ((Bullet x y _ _):bs) = blasts asLeft bs
+        where asLeft = (dropWhile (\ (Asteroid ax ay _ _) -> (distancez (x, y) (ax, ay)) <= 30.0) as)
+-- blasts as bs = as
+
+distancez :: (Int, Int) -> (Int, Int) -> Double
+distancez (x,y) (x', y') = sqrt $ realToFrac $ (((wrapX x') - (wrapX x)) ^ 2) + (((wrapY y') - (wrapY y)) ^ 2)
 
 collisions :: State -> State
 collisions (State player asteroids bullets) = 
@@ -96,7 +101,7 @@ stepAsteroids (rx, ry) asteroids = (Asteroid rx ry 1 1):asteroids
 step :: ((Int, Int), Bool, (Int, Int)) -> State -> State
 step ((dx, dy), space, rs) (State player asteroids bullets) = 
     collisions $ State (stepPlayer (dx, dy) player)
-                        asteroids -- (stepAsteroids rs asteroids)
+                        (stepAsteroids rs asteroids)
                         (stepBullets space player bullets)
 
 drawAsteroid :: Asteroid -> Form
