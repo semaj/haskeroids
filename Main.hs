@@ -12,7 +12,7 @@ bullet :: Form
 bullet = filled white $ rect 10.0 2.0
 
 asteroid :: Double -> Form
-asteroid radius = filled blue $ circle radius
+asteroid radius = filled white $ circle radius
 
 friction = 0.95
 acceleration = 1.0
@@ -80,17 +80,18 @@ stepBullets space player bullets = map moveBullet $ filter isAlive (newB ++ bull
 
 
 blasts :: [Asteroid] -> [Bullet] -> [Asteroid] -- , [Bullet])
--- blasts as ((Bullet x y _ _):bs) = blasts asLeft bs
 blasts as [] = as
 blasts as ((Bullet x y _ _):bs) = blasts asLeft bs
-        where asLeft = (dropWhile (\ (Asteroid ax ay _ _) -> (distancez (x, y) (ax, ay)) <= 30.0) as)
--- blasts as bs = as
+        where asLeft = (filter (\ (Asteroid ax ay _ _) -> (distancez (x, y) (ax, ay)) >= 30.0) as)
 
 distancez :: (Int, Int) -> (Int, Int) -> Double
-distancez (x,y) (x', y') = sqrt $ realToFrac $ (((wrapX x') - (wrapX x)) ^ 2) + (((wrapY y') - (wrapY y)) ^ 2)
+distancez (x,y) (x', y') = let (ax, ay, ax', ay') = (abs (wrapX x), abs (wrapY y), abs (wrapX x'), abs (wrapY y'))
+                               result = sqrt $ realToFrac $ ((ax' - ax) ^ 2) + ((ay' - ay) ^ 2)
+                               in result
+
 
 collisions :: State -> State
-collisions (State player asteroids bullets) = 
+collisions (State player asteroids bullets) =
   State player
         (blasts asteroids bullets)
         bullets
@@ -99,7 +100,7 @@ stepAsteroids :: (Int, Int) -> [Asteroid] -> [Asteroid]
 stepAsteroids (rx, ry) asteroids = (Asteroid rx ry 1 1):asteroids
 
 step :: ((Int, Int), Bool, (Int, Int)) -> State -> State
-step ((dx, dy), space, rs) (State player asteroids bullets) = 
+step ((dx, dy), space, rs) (State player asteroids bullets) =
     collisions $ State (stepPlayer (dx, dy) player)
                         (stepAsteroids rs asteroids)
                         (stepBullets space player bullets)
@@ -114,8 +115,8 @@ drawBullet (Bullet x y life r) =
 render :: State -> Element
 -- render (State p a b) | trace (show b) False = undefined
 render (State (Player x y vx vy r) asteroids bullets) =
-  collage worldWidth 
-          worldHeight 
+  collage worldWidth
+          worldHeight
           ([move ((wrapX x), (wrapY y)) $ rotate r ship] ++ (map drawBullet bullets) ++ (map drawAsteroid asteroids))
 
 wrapX :: Int -> Double
@@ -126,7 +127,7 @@ wrapY y = realToFrac $ mod y worldHeight
 
 sig :: Signal ((Int, Int), Bool, (Int, Int))
 sig = lift5 (\ x y z a b -> (x, y, (z, a)))
-            Keyboard.arrows 
+            Keyboard.arrows
             (Keyboard.isDown Keyboard.SpaceKey)
             (Random.range 0 worldWidth (Time.every Time.second))
             (Random.range 0 worldHeight (Time.every Time.second))
@@ -135,8 +136,8 @@ sig = lift5 (\ x y z a b -> (x, y, (z, a)))
 main :: IO ()
 main = run defaultConfig $ render <~ stepper
   where
-    defaultPlayer = Player 100 100 0 0 0.0
-    defaultAsteroid = [(Asteroid 100 100 1 1), (Asteroid 313 412 1 1)]
+    defaultPlayer = Player 200 200 0 0 0.0
+    defaultAsteroid = [(Asteroid 400 400 1 1), (Asteroid 140 310 1 1), (Asteroid 100 100 1 1), (Asteroid 313 412 1 1)]
     defaultBullets = []
     state = State defaultPlayer defaultAsteroid defaultBullets
     stepper = foldp step state sig
