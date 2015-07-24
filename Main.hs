@@ -4,6 +4,7 @@ import qualified FRP.Helm.Window as Window
 import qualified FRP.Helm.Time as Time
 import qualified FRP.Helm.Random as Random
 import Debug.Trace
+import Data.Maybe
 
 ship :: Form
 ship = filled white $ ngon 3 20.0
@@ -19,6 +20,11 @@ acceleration = 1.0
 worldWidth = 600
 worldHeight = 600
 startBLife = 10
+
+defaultPlayer = Player 200 200 0 0 0.0
+defaultAsteroid = []
+defaultBullets = []
+defaultState = State defaultPlayer defaultAsteroid defaultBullets
 
 data Player = Player {
   x :: Int,
@@ -46,7 +52,7 @@ data State = State {
   player :: Player,
   asteroids :: [Asteroid],
   bullets :: [Bullet]
-}
+} | GameOver
 
 -- wow. unit circle comes in handy
 thrust :: Int -> Player -> Player
@@ -67,7 +73,7 @@ isAlive :: Bullet -> Bool
 isAlive (Bullet _ _ life _) = life /= 50
 
 newBullet :: Player -> Bullet
-newBullet (Player x y _ _ r) = Bullet x y 0 r
+newBullet (Player x y _ _ r) = Bullet (abs $ round (wrapX x)) (abs $ round (wrapY y)) 0 r
 
 moveBullet :: Bullet -> Bullet
 moveBullet (Bullet x y life rot) = Bullet (x + nx) (y + ny) (life + 1) rot
@@ -89,17 +95,21 @@ distancez (x,y) (x', y') = let (ax, ay, ax', ay') = (abs (wrapX x), abs (wrapY y
                                result = sqrt $ realToFrac $ ((ax' - ax) ^ 2) + ((ay' - ay) ^ 2)
                                in result
 
+explosions :: Player -> [Asteroid] -> Bool
+explosions p as = any (\a -> (distancez ((x p), (y p)) ((ax a),(ay a))) <= 30.0) as
 
 collisions :: State -> State
-collisions (State player asteroids bullets) =
-  State player
-        (blasts asteroids bullets)
-        bullets
+collisions (State player asteroids bullets)
+  | (explosions player asteroids) == True = GameOver
+  | otherwise = State player
+                      (blasts asteroids bullets)
+                      bullets
 
 stepAsteroids :: (Int, Int) -> [Asteroid] -> [Asteroid]
-stepAsteroids (rx, ry) asteroids = (Asteroid rx ry 1 1):asteroids
+stepAsteroids (rx, ry) asteroids | trace ((show rx) ++ "," ++ (show ry)) True = (Asteroid rx ry 1 1):asteroids
 
 step :: ((Int, Int), Bool, (Int, Int)) -> State -> State
+step _ GameOver = defaultState
 step ((dx, dy), space, rs) (State player asteroids bullets) =
     collisions $ State (stepPlayer (dx, dy) player)
                         (stepAsteroids rs asteroids)
@@ -114,6 +124,7 @@ drawBullet (Bullet x y life r) =
 
 render :: State -> Element
 -- render (State p a b) | trace (show b) False = undefined
+render GameOver = collage worldWidth worldHeight []
 render (State (Player x y vx vy r) asteroids bullets) =
   collage worldWidth
           worldHeight
@@ -129,15 +140,11 @@ sig :: Signal ((Int, Int), Bool, (Int, Int))
 sig = lift5 (\ x y z a b -> (x, y, (z, a)))
             Keyboard.arrows
             (Keyboard.isDown Keyboard.SpaceKey)
-            (Random.range 0 worldWidth (Time.every Time.second))
-            (Random.range 0 worldHeight (Time.every Time.second))
+            (Random.range 0 worldWidth (Time.fps 10))
+            (Random.range 0 worldHeight (Time.fps 10))
             (Time.every Time.millisecond)
 
 main :: IO ()
 main = run defaultConfig $ render <~ stepper
   where
-    defaultPlayer = Player 200 200 0 0 0.0
-    defaultAsteroid = [(Asteroid 400 400 1 1), (Asteroid 140 310 1 1), (Asteroid 100 100 1 1), (Asteroid 313 412 1 1)]
-    defaultBullets = []
-    state = State defaultPlayer defaultAsteroid defaultBullets
-    stepper = foldp step state sig
+    stepper = foldp step defaultState sig
